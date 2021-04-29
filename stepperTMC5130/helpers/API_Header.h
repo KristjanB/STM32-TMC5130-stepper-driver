@@ -8,12 +8,9 @@
 #ifndef TMC_API_HEADER_H_
 #define TMC_API_HEADER_H_
 
-	#include "Config.h"
 	#include "Macros.h"
 	#include "Constants.h"
 	#include "Bits.h"
-	#include "CRC.h"
-	#include "RegisterAccess.h"
 	#include <stdlib.h>
 	#include "Types.h"
 

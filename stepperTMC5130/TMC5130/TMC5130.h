@@ -11,7 +11,7 @@
 #include "main.h"
 #include "TMC5130_Register.h"
 #include "TMC5130_Constants.h"
-#include "TMC5130_Fields.h"
+#include "TMC5130_Pins.h"
 #include "helpers/Bits.h"
 
 // Helper macros
@@ -52,15 +52,14 @@ typedef struct
 	int32_t 				rampstat;
 	uint8_t 				homing_done;
 
+	// INITIALIZATION
+	GPIO_TypeDef	*cs_port;
+	uint16_t		cs_pin;
+
+	GPIO_TypeDef	*en_port;
+	uint16_t		en_pin;
+
 } TMC5130TypeDef;
-
-//TMC5130TypeDef stepperR;
-//TMC5130TypeDef stepperL;
-
-// Default Register values
-#define R10 0x00071703  // IHOLD_IRUN
-#define R3A 0x00010000  // ENC_CONST
-#define R6C 0x000101D5  // CHOPCONF
 
 
 
@@ -71,7 +70,7 @@ typedef struct
 /*
  * PUBLIC FUNCTIONS
  */
-void 		stpr_initStepper	(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, uint8_t dir, uint8_t current);
+void 		stpr_initStepper	(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, GPIO_TypeDef *cs_port, uint16_t cs_pin, uint8_t dir, uint8_t current);
 uint8_t	 	stpr_home			(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard);   // home stepper motor - stallguard = sgt value
 void 		stpr_disableDriver	(TMC5130TypeDef *tmc5130);
 void 		stpr_enableDriver	(TMC5130TypeDef *tmc5130);

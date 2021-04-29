@@ -129,12 +129,12 @@ uint32_t stpr_getPos(TMC5130TypeDef *tmc5130)
 
 void stpr_disableDriver(TMC5130TypeDef *tmc5130)
 {
-	HAL_GPIO_WritePin(TMC_ENABLE_GPIO_Port, TMC_ENABLE_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(tmc5130->en_port, tmc5130->en_pin, GPIO_PIN_SET);
 }
 
 void stpr_enableDriver(TMC5130TypeDef *tmc5130)
 {
-	HAL_GPIO_WritePin(TMC_ENABLE_GPIO_Port, TMC_ENABLE_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(tmc5130->en_port, tmc5130->en_pin, GPIO_PIN_RESET);
 }
 
 void stpr_setPos(TMC5130TypeDef *tmc5130, int32_t position)
@@ -148,16 +148,16 @@ void stpr_waitMove(TMC5130TypeDef *tmc5130)
 	while((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) != 0x400);
 }
 
-void stpr_initStepper(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, uint8_t dir, uint8_t current)
+void stpr_initStepper(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, GPIO_TypeDef *cs_port, uint16_t cs_pin, uint8_t dir, uint8_t current)
 {
-
 	 tmc5130->spi = spi;
+	 tmc5130->cs_pin = cs_pin;
+	 tmc5130->cs_port = cs_port;
 	 tmc5130->homing_done = 0;
 	 tmc5130->home_state = HOME;
 	 tmc5130->prev_home_state = HOME;
 
 	 stpr_writeInt(tmc5130, TMC5130_GCONF, (dir << 4)); 	// GCONF
-
 
 	 stpr_writeInt(tmc5130, TMC5130_TPOWERDOWN,	0x0000000A); 	//TPOWERDOWN=10
 
@@ -181,6 +181,11 @@ void stpr_initStepper(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, uint8_t d
 	 stpr_writeInt(tmc5130, TMC5130_XTARGET,	0x00000000);     //XTARGET=0
 }
 
+
+
+/*
+ * Optimal stallguard value is influenced by velocity and stepper current.
+ */
 uint8_t stpr_home(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard)
 {
 
