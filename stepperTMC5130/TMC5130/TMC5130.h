@@ -14,13 +14,6 @@
 #include "TMC5130_Pins.h"
 #include "helpers/Bits.h"
 
-// Helper macros
-#define TMC5130_FIELD_READ(tdef, address, mask, shift) \
-	FIELD_GET(tmc5130_readInt(tdef, address), mask, shift)
-#define TMC5130_FIELD_WRITE(tdef, address, mask, shift, value) \
-	(tmc5130_writeInt(tdef, address, FIELD_SET(tmc5130_readInt(tdef, address), mask, shift, value)))
-
-
 
 typedef enum
 {
