@@ -12,8 +12,8 @@
     where argument:
     1) tmc5130TypeDef stepper1;
     2) SPI_HandleTypeDef hspiX (X = spi channel; normally added automatically if using CUBEMX)
-    3) GPIO port that is defined in TMC5130_Pins.h
-    4) GPIO pin that is defined in TMC5130_Pins.h
+    3) Chip select GPIO port that is defined in TMC5130_Pins.h
+    4) Chip select GPIO pin that is defined in TMC5130_Pins.h
     5) direction (1 or 0)
     6) current (20 corresponds to 200mA and so on)
     
