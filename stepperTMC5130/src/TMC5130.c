@@ -1,10 +1,5 @@
-/*
- * TMC5130.c
- *
- *  Created on: 03.07.2017
- *      Author: LK
- */
-#include "TMC5130/TMC5130.h"
+
+#include "inc/TMC5130.h"
 #include "assert.h"
 
 // => SPI wrapper.
@@ -119,7 +114,7 @@ void stpr_moveAngle(TMC5130TypeDef *tmc5130, float angle, uint32_t velocityMax)
 
 
 // Get current stepper position
-uint32_t stpr_getPos(TMC5130TypeDef *tmc5130)
+int32_t stpr_getPos(TMC5130TypeDef *tmc5130)
 {
 	int32_t XActual;
 	XActual = stpr_readInt(tmc5130, TMC5130_XACTUAL);
@@ -146,6 +141,11 @@ void stpr_setPos(TMC5130TypeDef *tmc5130, int32_t position)
 void stpr_waitMove(TMC5130TypeDef *tmc5130)
 {
 	while((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) != 0x400);
+}
+
+void stpr_setCurrent(TMC5130TypeDef *tmc5130, uint8_t current)
+{
+	 stpr_writeInt(tmc5130, TMC5130_IHOLD_IRUN,	(current << 8) | 0x0007006); 	//IHOLD_IRUN: IHOLD=6, IRUN=19 (max.current), IHOLDDELAY=6
 }
 
 void stpr_initStepper(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, GPIO_TypeDef *cs_port, uint16_t cs_pin, uint8_t dir, uint8_t current)
@@ -182,109 +182,176 @@ void stpr_initStepper(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, GPIO_Type
 }
 
 
+/*
+ * Working homing routine using stallguard. Optimal values as tested:
+ * Current: 23 (can be initialised in stpr_init() of stpr_setCurrent())
+ * Stallguardtreshold: 4
+ * Homing_speed: 30000
+ */
+
+void stpr_home(TMC5130TypeDef *tmc5130, uint16_t homing_speed, uint8_t stallguardthreshold)
+{
+	int16_t homing_retract = -5000;
+	uint16_t stall_speed;
+	stall_speed = 16777216 / homing_speed;
+	//stall_speed = stall_speed / 16;  // match homing speed to actual microstep speed (at 1/16 microstep)
+	stall_speed = stall_speed * 1.10; // Activate stallGuard sligthly below desired homing velocity (provide 10% tolerance)
+
+	stpr_writeInt(tmc5130, TMC5130_GCONF, 0x1080);	//stealthchop off for stallguard homing
+	stpr_writeInt(tmc5130, TMC5130_COOLCONF, ((stallguardthreshold & 0x7F)<<16));//sgt <-- Entry the value determined for SGT: lower value=higher sensitivity (lower force for stall detection)
+	stpr_writeInt(tmc5130, TMC5130_TCOOLTHRS, stall_speed);//TCOOLTHRS
+	stpr_writeInt(tmc5130, TMC5130_SWMODE, 0x400);	//SWITCH REGISTER
+	stpr_writeInt(tmc5130, TMC5130_AMAX, 1000);	//AMAX for stallGuard homing shall be significantly lower than AMAX for printing
+
+	// Set velocity mode in direction to the endstop
+	stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_VELPOS);	//VELOCITY MODE, direction to the endstop
+	stpr_writeInt(tmc5130, TMC5130_VMAX, homing_speed);	//Homing Speed in VMAX
+
+	HAL_Delay(20);
+
+	//While motor is still moving (vzero != 1)
+	while((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) != 0x400);
+
+	// Endstop reached. Reset and retract
+	stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_HOLD);		//HOLD Mode
+	stpr_writeInt(tmc5130, TMC5130_SWMODE, 0x0);				//SWITCH REGISTER
+	stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_POSITION);//Position MODE
+	stpr_writeInt(tmc5130, TMC5130_DMAX, 0xFFFF);				//DMAX
+	stpr_writeInt(tmc5130, TMC5130_GCONF, 0x1080);//Turn on stealthchop again
+	stpr_writeInt(tmc5130, TMC5130_XACTUAL, 0x0);	//XACTUAL = 0
+	stpr_writeInt(tmc5130, TMC5130_XTARGET, 0x0);	//XTARGET = 0
+
+
+	/*
+	 * This code is used for "retract and move to home again"
+	 */
+
+	//stpr_writeInt(tmc5130, TMC5130_XTARGET, homing_retract);	//XTARGET = homing_retract
+
+	/*
+    HAL_Delay(20);
+
+	//While motor is still moving (vzero != 1)
+	while((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) != 0x400);
+
+	// Endstop reached. Reset and retract
+	stpr_writeInt(tmc5130, TMC5130_SWMODE, 0x0);	//SWITCH REGISTER
+	stpr_writeInt(tmc5130, TMC5130_RAMPMODE, 0x3);	//HOLD Mode
+	stpr_writeInt(tmc5130, TMC5130_GCONF, 0x1080);//Turn on stealthchop again
+	stpr_writeInt(tmc5130, TMC5130_XACTUAL, 0x0);	//XACTUAL = 0
+	stpr_writeInt(tmc5130, TMC5130_XTARGET, 0x0);	//XTARGET = 0
+	stpr_writeInt(tmc5130, TMC5130_RAMPMODE, 0x0);	//Position MODE
+	 */
+
+	HAL_Delay(200);
+}
+
+
+// Currently unused homing routine because of the problems with stallguard values.
 
 /*
  * Optimal stallguard value is influenced by velocity and stepper current.
  */
-uint8_t stpr_home(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard)
-{
 
-	/*
-	 * rotate home indefinitely until stallguard triggers
-	 */
-	switch(tmc5130->home_state)
-	{
-
-		case HOME:
-		{
-			//stpr_enableDriver(tmc5130);
-
-			//stpr_writeInt(tmc5130, TMC5130_SWMODE, 0x00);
-
-			stpr_writeInt(tmc5130, TMC5130_COOLCONF, 	((stallguard& 0x7F)<<16));	// sgt <-- Entry the value determined for SGT: lower value=higher sensitivity (lower force for stall detection)
-			stpr_writeInt(tmc5130, TMC5130_TCOOLTHRS,	0xFFFF);				// TCOOLTHRS
-			stpr_writeInt(tmc5130, TMC5130_SWMODE, 		0x400);						// enable SG
-			stpr_writeInt(tmc5130, TMC5130_AMAX, 		1000);						// AMAX for stallGuard homing shall be significantly lower than AMAX for printing
-
-			stpr_readInt(tmc5130, TMC5130_RAMPSTAT);
-
-			stpr_right(tmc5130, velocity);
-
-			HAL_Delay(50);
-
-			tmc5130->prev_home_state = HOME;
-			tmc5130->home_state = WAIT_MOVE;
-
-			break;
-		}
-
-		case RETRACT:
-		{
-			// Endstop reached. Reset and retract
-			//stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_HOLD);		//HOLD Mode
-			stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_POSITION);	//Position MODE
-			stpr_writeInt(tmc5130, TMC5130_XACTUAL, 	0x0);					//XACTUAL = 0
-			stpr_writeInt(tmc5130, TMC5130_SWMODE, 	0x0);					//SWITCH REGISTER
-			stpr_writeInt(tmc5130, TMC5130_VMAX, 	velocity);				//Homing Speed in VMAX
-			stpr_writeInt(tmc5130, TMC5130_DMAX, 	0xFFFF);				//DMAX
-			stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);					//XTARGET = homing_retract
-
-			tmc5130->prev_home_state = RETRACT;
-			tmc5130->home_state = WAIT_MOVE;
-
-			break;
-
-		}
-		case UNRETRACT:
-		{
-			// Endstop reached. Reset and retract
-			//stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_HOLD);		//HOLD Mode
-			stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_POSITION);	//Position MODE
-			stpr_writeInt(tmc5130, TMC5130_SWMODE, 	0x0);					//SWITCH REGISTER
-			stpr_writeInt(tmc5130, TMC5130_VMAX, 	velocity);				//Homing Speed in VMAX
-			stpr_writeInt(tmc5130, TMC5130_DMAX, 	0xFFFF);				//DMAX
-			stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);					//XTARGET = homing_retract
-
-
-			tmc5130->prev_home_state = UNRETRACT;
-			tmc5130->home_state = WAIT_MOVE;
-
-			break;
-		}
-
-		case WAIT_MOVE:
-		{
-
-			tmc5130->drvstat = (stpr_readInt(tmc5130, TMC5130_DRVSTATUS) & 0x11F03FF);
-			tmc5130->sg_flag = (tmc5130->drvstat & 0x1000000) >> 24;
-			tmc5130->sg_result = tmc5130->drvstat & 0x3FF;
-			tmc5130->cs_actual = tmc5130->drvstat & 0x1F0000;
-
-			if((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) == 0x400)
-			//if((stpr_readInt(tmc5130, TMC5130_DRVSTATUS) & 0x1000000) >> 24)
-			{
-				stpr_stop(tmc5130);
-				stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);
-				if(tmc5130->prev_home_state == HOME)
-				{
-					tmc5130->home_state = RETRACT;
-				}
-				else if(tmc5130->prev_home_state == RETRACT)
-				{
-					tmc5130->home_state = UNRETRACT;
-				}
-				else if(tmc5130->prev_home_state == UNRETRACT)
-				{
-					stpr_writeInt(tmc5130, TMC5130_XACTUAL, 	0x0);					//XACTUAL = 0
-					tmc5130->homing_done = 1;
-				}
-			}
-			break;
-		}
-
-	}
-
-	return tmc5130->homing_done;
-}
-
+//uint8_t stpr_home(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard)
+//{
+//
+//	/*
+//	 * rotate home indefinitely until stallguard triggers
+//	 */
+//	switch(tmc5130->home_state)
+//	{
+//
+//		case HOME:
+//		{
+//			//stpr_enableDriver(tmc5130);
+//
+//			//stpr_writeInt(tmc5130, TMC5130_SWMODE, 0x00);
+//
+//			stpr_writeInt(tmc5130, TMC5130_COOLCONF, 	((stallguard& 0x7F)<<16));	// sgt <-- Entry the value determined for SGT: lower value=higher sensitivity (lower force for stall detection)
+//			stpr_writeInt(tmc5130, TMC5130_TCOOLTHRS,	0xFFFF);				// TCOOLTHRS
+//			stpr_writeInt(tmc5130, TMC5130_SWMODE, 		0x400);						// enable SG
+//			stpr_writeInt(tmc5130, TMC5130_AMAX, 		1000);						// AMAX for stallGuard homing shall be significantly lower than AMAX for printing
+//
+//			stpr_readInt(tmc5130, TMC5130_RAMPSTAT);
+//
+//			stpr_right(tmc5130, velocity);
+//
+//			HAL_Delay(50);
+//
+//			tmc5130->prev_home_state = HOME;
+//			tmc5130->home_state = WAIT_MOVE;
+//
+//			break;
+//		}
+//
+//		case RETRACT:
+//		{
+//			// Endstop reached. Reset and retract
+//			//stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_HOLD);		//HOLD Mode
+//			stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_POSITION);	//Position MODE
+//			stpr_writeInt(tmc5130, TMC5130_XACTUAL, 	0x0);					//XACTUAL = 0
+//			stpr_writeInt(tmc5130, TMC5130_SWMODE, 	0x0);					//SWITCH REGISTER
+//			stpr_writeInt(tmc5130, TMC5130_VMAX, 	velocity);				//Homing Speed in VMAX
+//			stpr_writeInt(tmc5130, TMC5130_DMAX, 	0xFFFF);				//DMAX
+//			stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);					//XTARGET = homing_retract
+//
+//			tmc5130->prev_home_state = RETRACT;
+//			tmc5130->home_state = WAIT_MOVE;
+//
+//			break;
+//
+//		}
+//		case UNRETRACT:
+//		{
+//			// Endstop reached. Reset and retract
+//			//stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_HOLD);		//HOLD Mode
+//			stpr_writeInt(tmc5130, TMC5130_RAMPMODE, TMC5130_MODE_POSITION);	//Position MODE
+//			stpr_writeInt(tmc5130, TMC5130_SWMODE, 	0x0);					//SWITCH REGISTER
+//			stpr_writeInt(tmc5130, TMC5130_VMAX, 	velocity);				//Homing Speed in VMAX
+//			stpr_writeInt(tmc5130, TMC5130_DMAX, 	0xFFFF);				//DMAX
+//			stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);					//XTARGET = homing_retract
+//
+//
+//			tmc5130->prev_home_state = UNRETRACT;
+//			tmc5130->home_state = WAIT_MOVE;
+//
+//			break;
+//		}
+//
+//		case WAIT_MOVE:
+//		{
+//
+//			tmc5130->drvstat = (stpr_readInt(tmc5130, TMC5130_DRVSTATUS) & 0x11F03FF);
+//			tmc5130->sg_flag = (tmc5130->drvstat & 0x1000000) >> 24;
+//			tmc5130->sg_result = tmc5130->drvstat & 0x3FF;
+//			tmc5130->cs_actual = tmc5130->drvstat & 0x1F0000;
+//
+//			if((stpr_readInt(tmc5130, TMC5130_RAMPSTAT) & 0x400) == 0x400)
+//			//if((stpr_readInt(tmc5130, TMC5130_DRVSTATUS) & 0x1000000) >> 24)
+//			{
+//				stpr_stop(tmc5130);
+//				stpr_writeInt(tmc5130, TMC5130_XTARGET, 	0);
+//				if(tmc5130->prev_home_state == HOME)
+//				{
+//					tmc5130->home_state = RETRACT;
+//				}
+//				else if(tmc5130->prev_home_state == RETRACT)
+//				{
+//					tmc5130->home_state = UNRETRACT;
+//				}
+//				else if(tmc5130->prev_home_state == UNRETRACT)
+//				{
+//					stpr_writeInt(tmc5130, TMC5130_XACTUAL, 	0x0);					//XACTUAL = 0
+//					tmc5130->homing_done = 1;
+//				}
+//			}
+//			break;
+//		}
+//
+//	}
+//
+//	return tmc5130->homing_done;
+//}
+//
 

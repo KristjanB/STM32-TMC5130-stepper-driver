@@ -12,8 +12,9 @@
 #include "TMC5130_Register.h"
 #include "TMC5130_Constants.h"
 #include "TMC5130_Pins.h"
-#include "helpers/Bits.h"
 
+
+#define BYTE(value, n)    (((value) >> ((n) << 3)) & 0xFF)
 
 typedef enum
 {
@@ -64,7 +65,8 @@ typedef struct
  * PUBLIC FUNCTIONS
  */
 void 		stpr_initStepper	(TMC5130TypeDef *tmc5130, SPI_HandleTypeDef *spi, GPIO_TypeDef *cs_port, uint16_t cs_pin, uint8_t dir, uint8_t current);
-uint8_t	 	stpr_home			(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard);   // home stepper motor - stallguard = sgt value
+//uint8_t	 	stpr_home			(TMC5130TypeDef *tmc5130, uint16_t velocity, uint8_t stallguard);   // home stepper motor - stallguard = sgt value
+void 		stpr_home			(TMC5130TypeDef *tmc5130, uint16_t homing_speed, uint8_t stallguardthreshold);
 void 		stpr_disableDriver	(TMC5130TypeDef *tmc5130);
 void 		stpr_enableDriver	(TMC5130TypeDef *tmc5130);
 void 		stpr_writeInt		(TMC5130TypeDef *tmc5130, uint8_t address, int32_t value);
@@ -76,8 +78,11 @@ void 		stpr_moveTo			(TMC5130TypeDef *tmc5130, int32_t position, uint32_t veloci
 void 		stpr_moveBy			(TMC5130TypeDef *tmc5130, int32_t *ticks, uint32_t velocityMax);
 void 		stpr_moveAngle		(TMC5130TypeDef *tmc5130, float angle, uint32_t velocityMax);
 void 		stpr_setPos			(TMC5130TypeDef *tmc5130, int32_t position);
-uint32_t 	stpr_getPos			(TMC5130TypeDef *tmc5130);
+int32_t 	stpr_getPos			(TMC5130TypeDef *tmc5130);
 void 		stpr_waitMove		(TMC5130TypeDef *tmc5130);
+void 		stpr_setCurrent		(TMC5130TypeDef *tmc5130, uint8_t current);
+
+void homing_test(TMC5130TypeDef *tmc5130, uint16_t homing_speed, uint8_t stallguardthreshold);
 
 /*
  * PRIVATE FUNCTIONS

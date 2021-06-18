@@ -11,7 +11,6 @@
 #include "main.h"
 
 // Name macros as per your CubeMX labels
-
 #define CHIP_SELECT_1_PIN TMC1_CS_Pin
 #define CHIP_SELECT_1_PORT TMC1_CS_GPIO_Port
 

@@ -5,7 +5,7 @@
  *      Author: Kristjan
  */
 
-#include "TMC5130/TMC5130.h"
+#include "inc/TMC5130.h"
 #include "main.h"
 #include "assert.h"
 
